@@ -1041,15 +1041,22 @@ $(document).ready(function(){
 
   // Log out
   async function logOut() {
-    if (confirm("Sign out and clear session?")) {
-      if (typeof getAuthManager !== 'undefined') {
-        const auth = getAuthManager(mapusDB);
-        await auth.signOut();
-      } else {
-        // Fallback: clear local data
-        indexedDB.deleteDatabase('MapusDB');
+    if (confirm("Sign out and return to login page?")) {
+      try {
+        if (typeof getAuthManager !== 'undefined') {
+          const auth = getAuthManager(mapusDB);
+          await auth.signOut();
+        } else {
+          // Fallback: clear local data
+          indexedDB.deleteDatabase('MapusDB');
+        }
+        // Reload page - auth page will show if no session exists
+        window.location.href = window.location.href.split('?')[0];
+      } catch (error) {
+        console.error("Error during logout:", error);
+        // Still reload to clear state
+        window.location.href = window.location.href.split('?')[0];
       }
-      window.location.reload();
     }
   }
 
@@ -1668,6 +1675,7 @@ $(document).ready(function(){
   $(document).on("click", "#search-box img", search);
   $(document).on("click", "#create-map", createMap);
   $(document).on("click", "#logout", logOut);
+  $(document).on("click", "#user-logout-btn", logOut);
   $(document).on("click", "#share-button", showSharePopup);
   $(document).on("click", "#overlay", closeSharePopup);
   $(document).on("click", "#close-share", closeSharePopup);
