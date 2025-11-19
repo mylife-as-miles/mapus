@@ -1,0 +1,17 @@
+{
+  "name": "mapus",
+  "version": "1.0.0",
+  "description": "A map tool with local storage using IndexedDB",
+  "scripts": {
+    "build": "node build.js",
+    "serve": "npx http-server src -p 8080 -o",
+    "start": "npm run serve"
+  },
+  "keywords": ["map", "leaflet", "indexeddb"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
+
