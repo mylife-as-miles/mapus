@@ -6,6 +6,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <link rel="stylesheet" href="styles.css"/>
+  <link rel="stylesheet" href="auth.css"/>
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
 </head>
 <body style="margin:0px;">
@@ -17,6 +18,142 @@
     <input value="https://coollink.com/haha" id="share-url" readonly="readonly">
     <div id="share-copy">Copy link</div>
   </div>
+  <!-- Modern Auth Page -->
+  <div id="auth-page" class="auth-page">
+    <div class="auth-container">
+      <div class="auth-header">
+        <div class="auth-logo">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="8" fill="url(#gradient)"/>
+            <path d="M20 30L30 20L20 10L10 20L20 30Z" fill="white" opacity="0.9"/>
+            <defs>
+              <linearGradient id="gradient" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#634FF1"/>
+                <stop offset="1" stop-color="#A564D2"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <h1>Mapus</h1>
+        </div>
+        <p class="auth-tagline">Create and collaborate on beautiful maps</p>
+      </div>
+
+      <!-- Login Form -->
+      <div id="login-form" class="auth-form active">
+        <h2>Welcome back</h2>
+        <p class="auth-subtitle">Sign in to continue to Mapus</p>
+        
+        <form id="login-form-element">
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+          
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <div class="password-input-wrapper">
+              <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
+              <button type="button" class="toggle-password" data-target="login-password">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 4C6 4 3.27 6.11 2 9C3.27 11.89 6 14 10 14C14 14 16.73 11.89 18 9C16.73 6.11 14 4 10 4ZM10 12.5C8.07 12.5 6.5 10.93 6.5 9C6.5 7.07 8.07 5.5 10 5.5C11.93 5.5 13.5 7.07 13.5 9C13.5 10.93 11.93 12.5 10 12.5ZM10 7C9.17 7 8.5 7.67 8.5 8.5C8.5 9.33 9.17 10 10 10C10.83 10 11.5 9.33 11.5 8.5C11.5 7.67 10.83 7 10 7Z" fill="currentColor"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-options">
+            <label class="checkbox-label">
+              <input type="checkbox" id="remember-me">
+              <span>Remember me</span>
+            </label>
+            <a href="#" class="forgot-password">Forgot password?</a>
+          </div>
+
+          <button type="submit" class="auth-button primary">
+            <span>Sign in</span>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </form>
+
+        <div class="auth-divider">
+          <span>Don't have an account?</span>
+        </div>
+
+        <button type="button" class="auth-button secondary" id="switch-to-signup">
+          Create an account
+        </button>
+
+        <div id="login-error" class="error-message"></div>
+      </div>
+
+      <!-- Signup Form -->
+      <div id="signup-form" class="auth-form">
+        <h2>Create account</h2>
+        <p class="auth-subtitle">Start mapping your world</p>
+        
+        <form id="signup-form-element">
+          <div class="form-group">
+            <label for="signup-name">Full Name</label>
+            <input type="text" id="signup-name" placeholder="John Doe" required autocomplete="name">
+          </div>
+
+          <div class="form-group">
+            <label for="signup-email">Email</label>
+            <input type="email" id="signup-email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+          
+          <div class="form-group">
+            <label for="signup-password">Password</label>
+            <div class="password-input-wrapper">
+              <input type="password" id="signup-password" placeholder="At least 6 characters" required autocomplete="new-password">
+              <button type="button" class="toggle-password" data-target="signup-password">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 4C6 4 3.27 6.11 2 9C3.27 11.89 6 14 10 14C14 14 16.73 11.89 18 9C16.73 6.11 14 4 10 4ZM10 12.5C8.07 12.5 6.5 10.93 6.5 9C6.5 7.07 8.07 5.5 10 5.5C11.93 5.5 13.5 7.07 13.5 9C13.5 10.93 11.93 12.5 10 12.5ZM10 7C9.17 7 8.5 7.67 8.5 8.5C8.5 9.33 9.17 10 10 10C10.83 10 11.5 9.33 11.5 8.5C11.5 7.67 10.83 7 10 7Z" fill="currentColor"/>
+                </svg>
+              </button>
+            </div>
+            <div class="password-hint">Must be at least 6 characters</div>
+          </div>
+
+          <div class="form-options">
+            <label class="checkbox-label">
+              <input type="checkbox" id="terms" required>
+              <span>I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></span>
+            </label>
+          </div>
+
+          <button type="submit" class="auth-button primary">
+            <span>Create account</span>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </form>
+
+        <div class="auth-divider">
+          <span>Already have an account?</span>
+        </div>
+
+        <button type="button" class="auth-button secondary" id="switch-to-login">
+          Sign in instead
+        </button>
+
+        <div id="signup-error" class="error-message"></div>
+      </div>
+    </div>
+
+    <div class="auth-background">
+      <div class="auth-background-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Old popup (kept for compatibility) -->
   <div id="popup" style="display:none;">
     <div class="header-text">Welcome to Mapus!</div>
     <div class="subheader-text">To get started, click below to create a map.</div>
@@ -29,6 +166,15 @@
     <div class="more-item" id="logout">Log out</div>
   </div>
   <div id="sidebar">
+    <div id="user-profile-section" class="section" style="padding: 16px; border-bottom: 1px solid var(--border);">
+      <div id="user-profile-display" style="display: flex; align-items: center; gap: 12px;">
+        <div id="user-avatar" style="width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #634FF1 0%, #A564D2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 16px; flex-shrink: 0;"></div>
+        <div style="flex: 1; min-width: 0;">
+          <div id="user-name" style="font-family: Inter; font-weight: 600; font-size: 15px; color: var(--text-black); margin-bottom: 2px;">User</div>
+          <div id="user-email" style="font-family: Inter; font-weight: 400; font-size: 12px; color: var(--text-grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
+        </div>
+      </div>
+    </div>
     <div id="map-details" class="section">
       <input id="map-name" value="Cool map 👻" disabled>
       <input id="map-description" value="Let's all collaborate here">
@@ -85,10 +231,6 @@
       <div id="annotations-list">
       </div>
     </div>
-    <div class="section" id="attribution-section">
-      <div class="section-name">Made by Alyssa X</div>
-      <div id="attribution">© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors</div>
-    </div>
   </div>
   <div id="search-box">
     <input id="search-input" placeholder="Search for a place"/>
@@ -142,6 +284,8 @@
   </div>
   <div id="mapDiv"></div>
   <script src="db.js"></script>
+  <script src="auth.js"></script>
+  <script src="auth-handler.js"></script>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
   <script src="leaflet.min.js"></script>

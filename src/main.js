@@ -1,13 +1,11 @@
 $(document).ready(function(){
-  // Coordinates to center the map. Could let the user choose when creating a room & persist when sharing a link (via GET params)
-  const lat = 51.52;
-  const lon = -0.09;
+  // Coordinates to center the map. University of Nigeria, Nsukka, Enugu, Nigeria
+  const lat = 6.856667;
+  const lon = 7.395833;
 
   // Initialize the Leaflet map
-  var map = L.map('mapDiv', {
-    renderer: L.canvas({ tolerance: 10 })
-  }).setView([lat, lon], 13);
-  L.PM.setOptIn(true);
+  var map = null;
+  var mapInitialized = false;
   var mapname = "";
   var oldname = "";
   var mapdescription = "";
@@ -45,13 +43,71 @@ $(document).ready(function(){
 
   // Initialize IndexedDB and load data
   (async function() {
+    // Wait for mapusDB to be available (loaded via script tag)
+    if (typeof mapusDB === 'undefined') {
+      await new Promise(resolve => {
+        const checkDB = setInterval(() => {
+          if (typeof mapusDB !== 'undefined') {
+            clearInterval(checkDB);
+            resolve();
+          }
+        }, 50);
+      });
+    }
     await mapusDB.init();
     
-    // Create or get local user
-    currentUser = await getOrCreateUser();
+    // Check authentication - wait for auth handler to initialize
+    if (typeof getAuthManager !== 'undefined') {
+      const auth = getAuthManager(mapusDB);
+      currentUser = await auth.getCurrentUser();
+      
+      // If not authenticated, auth page will be shown by auth-handler.js
+      if (!currentUser) {
+        // Wait for user to authenticate
+        return new Promise((resolve) => {
+          window.addEventListener('userAuthenticated', async (e) => {
+            currentUser = {
+              id: e.detail.id,
+              uid: e.detail.id,
+              name: e.detail.name,
+              email: e.detail.email,
+              avatar: e.detail.avatar
+            };
+            // Continue with app initialization
+            await initializeApp();
+            resolve();
+          });
+        });
+      } else {
+        // Format current user for display
+        currentUser = {
+          id: currentUser.id,
+          uid: currentUser.id,
+          name: currentUser.name,
+          email: currentUser.email || '',
+          avatar: currentUser.avatar
+        };
+      }
+    } else {
+      // Fallback to local user if auth system not available
+      currentUser = await getOrCreateUser();
+    }
     
+    await initializeApp();
+  })();
+
+  async function initializeApp() {
+    // Display user information
+    updateUserDisplay();
+    
+    // Initialize map first
+    initMap();
+    
+    // Wait a bit for map to be fully ready, then load data
     if (params.has('file')) {
-      await checkData();
+      setTimeout(async () => {
+        await checkData();
+      }, 200);
     } else {
       // Prompt the user to create a map
       $("#popup").find(".header-text").html("Create a map");
@@ -59,9 +115,51 @@ $(document).ready(function(){
       $("#overlay").addClass("signin");
       $("#popup").addClass("signin").show();
     }
-  })();
+  }
+
+  // Update user display in sidebar
+  function updateUserDisplay() {
+    if (currentUser) {
+      const userName = currentUser.name || 'User';
+      const userEmail = currentUser.email || '';
+      const userAvatar = currentUser.avatar || null;
+      
+      // Update user name
+      const nameElement = document.getElementById('user-name');
+      if (nameElement) {
+        nameElement.textContent = userName;
+      }
+      
+      // Update user email
+      const emailElement = document.getElementById('user-email');
+      if (emailElement) {
+        emailElement.textContent = userEmail;
+      }
+      
+      // Update avatar
+      const avatarElement = document.getElementById('user-avatar');
+      if (avatarElement) {
+        if (userAvatar && userAvatar.initial) {
+          avatarElement.textContent = userAvatar.initial;
+          if (userAvatar.color) {
+            avatarElement.style.background = userAvatar.color;
+          }
+        } else {
+          // Fallback: use first letter of name
+          avatarElement.textContent = userName.charAt(0).toUpperCase();
+        }
+      }
+    }
+  }
 
   function initMap() {
+    if (!map) {
+      map = L.map('mapDiv', {
+        renderer: L.canvas({ tolerance: 10 })
+      }).setView([lat, lon], 16); // Zoomed in on University of Nigeria, Nsukka
+      L.PM.setOptIn(true);
+    }
+    
     // Makimum bounds for zooming and panning
     map.setMaxBounds([[84.67351256610522, -174.0234375], [-58.995311187950925, 223.2421875]]);
 
@@ -78,13 +176,24 @@ $(document).ready(function(){
 
     // No idea why but Leaflet seems to place default markers on startup...
     $("img[src='https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png']").remove();
+    
+    // Initialize follow cursor after map is ready
+    if (map && !followcursor) {
+      followcursor = L.marker([0, 0], {pane: "overlayPane", interactive:false}).addTo(map);
+      followcursor.setOpacity(0);
+      var tooltip = followcursor.bindTooltip("", { permanent: true, offset:[5,25], sticky: true, className: "hints", direction:"right"}).addTo(map);
+      followcursor.closeTooltip();
+    }
+    
+    mapInitialized = true;
+    
+    // Setup all map event handlers after map is ready
+    setupMapEventHandlers();
+    setupMapEventListeners();
   }
 
-  // Hints for drawing lines or polygons
-  var followcursor = L.marker([0, 0], {pane: "overlayPane", interactive:false}).addTo(map);
-  followcursor.setOpacity(0);
-  var tooltip = followcursor.bindTooltip("", { permanent: true, offset:[5,25], sticky: true, className: "hints", direction:"right"}).addTo(map);
-  followcursor.closeTooltip();
+  // Hints for drawing lines or polygons (will be initialized after map is ready)
+  var followcursor = null;
 
   // Show live location
   function liveLocation() {
@@ -98,7 +207,9 @@ $(document).ready(function(){
         });
         // Create a marker to show the user location
         userlocation = L.marker([position.coords.latitude, position.coords.longitude], {icon:icon, pane: "overlayPane"});
-        userlocation.addTo(map);
+        if (map) {
+          userlocation.addTo(map);
+        }
       });
     }
   }
@@ -277,31 +388,83 @@ $(document).ready(function(){
   // Find nearby
   function findNearby() {
     var user = checkAuth();
-    if (checkAuth() != false) {
+    if (checkAuth() != false && map) {
       var locationtype = $(this).attr("data-type");
       var markercolor = $(this).attr("data-color");
-      var coordinates = map.getBounds().getNorthWest().lng+','+map.getBounds().getNorthWest().lat+','+map.getBounds().getSouthEast().lng+','+map.getBounds().getSouthEast().lat;
-
+      
+      // Check if map is ready
+      if (!map || !map.getBounds) {
+        console.error("Map is not ready");
+        return;
+      }
+      
+      var bounds = map.getBounds();
+      
       // Call Nominatim API to get places nearby the current view, of the amenity that the user has selected
-      $.get('https://nominatim.openstreetmap.org/search?viewbox='+coordinates+'&format=geocodejson&limit=20&bounded=1&amenity='+locationtype+'&exclude_place_ids='+JSON.stringify(place_ids), function(data) {
-        // Custom marker icon depending on the amenity
-        var marker_icon = L.icon({
-          iconUrl: 'assets/'+locationtype+'-marker.svg',
-          iconSize:     [30, 30],
-          iconAnchor:   [15, 30],
-          shadowAnchor: [4, 62],
-          popupAnchor:  [-3, -76]
-        });
-        data.features.forEach(function(place){
-          // Create a marker for the place
-          var marker = L.marker([place.geometry.coordinates[1], place.geometry.coordinates[0]], {icon:marker_icon, pane:"overlayPane", interactive:true}).addTo(map);
+      // Format: viewbox=minlon,minlat,maxlon,maxlat (southwest to northeast)
+      var viewboxStr = bounds.getSouthWest().lng + ',' + bounds.getSouthWest().lat + ',' + bounds.getNorthEast().lng + ',' + bounds.getNorthEast().lat;
+      var excludeIds = place_ids.length > 0 ? place_ids.join(',') : '';
+      
+      // Build query string manually to avoid issues with jQuery serialization
+      var queryParams = {
+        'viewbox': viewboxStr,
+        'format': 'geocodejson',
+        'limit': 20,
+        'bounded': 1,
+        'amenity': locationtype
+      };
+      
+      // Only add exclude_place_ids if there are IDs to exclude
+      if (excludeIds && excludeIds.length > 0) {
+        queryParams['exclude_place_ids'] = excludeIds;
+      }
+      
+      $.ajax({
+        url: 'https://nominatim.openstreetmap.org/search',
+        data: queryParams,
+        dataType: 'json',
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        },
+        success: function(data) {
+          if (!data || !data.features || data.features.length === 0) {
+            console.log("No places found for " + locationtype);
+            return;
+          }
+          
+          // Custom marker icon depending on the amenity
+          var marker_icon = L.icon({
+            iconUrl: 'assets/'+locationtype+'-marker.svg',
+            iconSize:     [30, 30],
+            iconAnchor:   [15, 30],
+            shadowAnchor: [4, 62],
+            popupAnchor:  [-3, -76]
+          });
+          
+          data.features.forEach(function(place){
+            // Create a marker for the place
+            var marker = L.marker([place.geometry.coordinates[1], place.geometry.coordinates[0]], {icon:marker_icon, pane:"overlayPane", interactive:true});
+            if (map) {
+              marker.addTo(map);
+            }
 
-          // Create a popup with information about the place, and the options to save it or delete it (it's only local for now)
-          marker.bindTooltip('<h1>'+place.properties.geocoding.name+'</h1><div class="shape-data"><h3><img src="assets/marker-small-icon.svg">'+place.geometry.coordinates[1].toFixed(5)+', '+place.geometry.coordinates[0].toFixed(5)+'</h3></div><br><div id="buttons2"><button class="cancel-button-place" data-id='+place.properties.geocoding.place_id+'>Remove</button><button class="save-button-place" data-id='+place.properties.geocoding.place_id+'>Save</button></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: 0, y: -35})});
-          places.push({id: "", place_id:place.properties.geocoding.place_id, user:user.uid, name:place.properties.geocoding.name, desc:"", lat:place.geometry.coordinates[1], lng:place.geometry.coordinates[0], trigger:marker, completed:true, marker:marker, m_type:locationtype, type:"marker", session:session, color:markercolor});
-          place_ids.push(place.properties.geocoding.place_id);
-        });
+            // Create a popup with information about the place, and the options to save it or delete it (it's only local for now)
+            marker.bindTooltip('<h1>'+place.properties.geocoding.name+'</h1><div class="shape-data"><h3><img src="assets/marker-small-icon.svg">'+place.geometry.coordinates[1].toFixed(5)+', '+place.geometry.coordinates[0].toFixed(5)+'</h3></div><br><div id="buttons2"><button class="cancel-button-place" data-id='+place.properties.geocoding.place_id+'>Remove</button><button class="save-button-place" data-id='+place.properties.geocoding.place_id+'>Save</button></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: 0, y: -35})});
+            places.push({id: "", place_id:place.properties.geocoding.place_id, user:user.uid, name:place.properties.geocoding.name, desc:"", lat:place.geometry.coordinates[1], lng:place.geometry.coordinates[0], trigger:marker, completed:true, marker:marker, m_type:locationtype, type:"marker", session:session, color:markercolor});
+            place_ids.push(place.properties.geocoding.place_id);
+          });
+        },
+        error: function(xhr, status, error) {
+          console.error("Error fetching nearby places:", error, xhr.status);
+          // Don't show alert for rate limiting or no results
+          if (xhr.status !== 429 && xhr.status !== 0) {
+            console.log("No places found for " + locationtype + " in this area");
+          }
+        }
       });
+    } else {
+      console.error("User not authenticated or map not ready");
     }
   }
 
@@ -462,19 +625,27 @@ $(document).ready(function(){
     }
   }
 
-  // Start drawing lines/areas
-  map.on('pm:drawstart', ({ workingLayer }) => {
+  // Setup map event handlers (called after map is initialized)
+  function setupMapEventHandlers() {
+    if (!map) return;
+    
+    // Start drawing lines/areas
+    map.on('pm:drawstart', ({ workingLayer }) => {
     var user = checkAuth();
     if (checkAuth() != false) {
       // Show hints for drawing lines/areas
-      followcursor.openTooltip();
-      followcursor.setTooltipContent("Click to place first vertex");
+      if (followcursor) {
+        followcursor.openTooltip();
+        followcursor.setTooltipContent("Click to place first vertex");
+      }
 
       // Detect when a vertex is added to a line or area
       workingLayer.on('pm:vertexadded', e => {
         if (e.shape == "Polygon") {
           // Update hints
-          followcursor.setTooltipContent("Click on first vertex to finish");
+          if (followcursor) {
+            followcursor.setTooltipContent("Click on first vertex to finish");
+          }
           linelastcoord = e.layer._latlngs[e.layer._latlngs.length-1];
           if (e.layer._latlngs.length == 1) {
             // If this is the first vertex, get a key and add the new shape in the database
@@ -532,7 +703,9 @@ $(document).ready(function(){
                 linedistance += e.layer._latlngs[index-1].distanceTo(coordinate);
               }
             });
-            followcursor.setTooltipContent((linedistance/1000)+"km | Double click to finish");
+            if (followcursor) {
+              followcursor.setTooltipContent((linedistance/1000)+"km | Double click to finish");
+            }
 
             // Save new vertext in the database
             mapusDB.addObjectCoord(currentid, [linelastcoord.lat, linelastcoord.lng]);
@@ -542,15 +715,17 @@ $(document).ready(function(){
     }
   });
 
-  // Stop drawing lines / polygons
-  map.on('pm:drawend', e => {
-    lineon = false;
-    followcursor.closeTooltip();
-    cursorTool();
-  });
+    // Stop drawing lines / polygons
+    map.on('pm:drawend', e => {
+      lineon = false;
+      if (followcursor) {
+        followcursor.closeTooltip();
+      }
+      cursorTool();
+    });
 
-  // Add tooltip to lines and polygons
-  map.on('pm:create', e => {
+    // Add tooltip to lines and polygons
+    map.on('pm:create', e => {
     var user = checkAuth();
     if (checkAuth() != false) {
       enteringdata = true;
@@ -595,7 +770,9 @@ $(document).ready(function(){
 
       // The marker is supposed to be hidden, it's just for placing the tooltip on the map and triggering it
       centermarker.setOpacity(0);
-      centermarker.addTo(map);
+      if (map) {
+        centermarker.addTo(map);
+      }
       centermarker.openTooltip();
 
       // Automatically select the name so it's faster to edit
@@ -634,6 +811,7 @@ $(document).ready(function(){
       });
     }
   });
+  }
 
   // Start free drawing
   async function startDrawing(lat,lng,user) {
@@ -697,7 +875,9 @@ $(document).ready(function(){
 
       // Create a popup to set the name and description of the marker
       marker.bindTooltip('<label for="shape-name">Name</label><input value="Marker" id="shape-name" name="shape-name" /><label for="shape-desc">Description</label><textarea id="shape-desc" name="description"></textarea><br><div id="buttons"><button class="cancel-button">Cancel</button><button class="save-button">Save</button></div><div class="arrow-down"></div>', {permanent: true, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow create-form", offset: L.point({x: 0, y: -35})});
-      marker.addTo(map);
+      if (map) {
+        marker.addTo(map);
+      }
       marker.openTooltip();
 
       // Create a new key for the marker, and add it to the database
@@ -746,8 +926,12 @@ $(document).ready(function(){
     }
   }
 
-  // Map events
-  map.addEventListener('mousedown', (event) => {
+  // Setup map event listeners (called after map is initialized)
+  function setupMapEventListeners() {
+    if (!map) return;
+    
+    // Map events
+    map.addEventListener('mousedown', (event) => {
     var user = checkAuth();
     if (checkAuth() != false) {
       mousedown = true;
@@ -788,7 +972,9 @@ $(document).ready(function(){
       cursorcoords = [lat,lng];
 
       // Make tooltip for line and area hints follow the cursor
-      followcursor.setLatLng([lat,lng]);
+      if (followcursor) {
+        followcursor.setLatLng([lat,lng]);
+      }
       if (mousedown && drawing) {
         // If the pencil tool is enabled, draw to the mouse coordinates
         objects.filter(function(result){
@@ -805,18 +991,35 @@ $(document).ready(function(){
       }
     }
   });
-  map.addEventListener('zoom', (event) => {
-    // Zoom event - no database update needed for local mode
-  });
-  map.addEventListener('movestart', (event) => {
-    dragging = true;
-  });
-  map.addEventListener('moveend', (event) => {
-    dragging = false;
-  });
+    map.addEventListener('zoom', (event) => {
+      // Zoom event - no database update needed for local mode
+    });
+    map.addEventListener('movestart', (event) => {
+      dragging = true;
+    });
+    map.addEventListener('moveend', (event) => {
+      dragging = false;
+    });
+  }
 
   // Get or create local user
   async function getOrCreateUser() {
+    // Try to get authenticated user first
+    if (typeof getAuthManager !== 'undefined') {
+      const auth = getAuthManager(mapusDB);
+      const user = await auth.getCurrentUser();
+      if (user) {
+        session = Date.now();
+        return {
+          id: user.id,
+          uid: user.id,
+          name: user.name,
+          session: session
+        };
+      }
+    }
+    
+    // Fallback to local user
     let user = await mapusDB.getUser('local_user');
     if (!user) {
       user = {
@@ -831,15 +1034,21 @@ $(document).ready(function(){
     return user;
   }
 
-  // Check auth (always returns user for local mode)
+  // Check auth
   function checkAuth() {
     return currentUser;
   }
 
-  // Log out (just reloads the page)
-  function logOut() {
-    if (confirm("Clear all local data and start fresh?")) {
-      indexedDB.deleteDatabase('MapusDB');
+  // Log out
+  async function logOut() {
+    if (confirm("Sign out and clear session?")) {
+      if (typeof getAuthManager !== 'undefined') {
+        const auth = getAuthManager(mapusDB);
+        await auth.signOut();
+      } else {
+        // Fallback: clear local data
+        indexedDB.deleteDatabase('MapusDB');
+      }
       window.location.reload();
     }
   }
@@ -1146,13 +1355,18 @@ $(document).ready(function(){
 
           // Areas are lines until they are completed, when they become a polygon
           inst.line.remove();
-          var polygon = L.polygon(inst.path, {color:inst.color}).addTo(map);
+          var polygon = L.polygon(inst.path, {color:inst.color});
+          if (map) {
+            polygon.addTo(map);
+          }
           inst.line = polygon;
         }
 
         // Hide the marker (since it's only used for positioning the popup)
         centermarker.setOpacity(0);
-        centermarker.addTo(map);
+        if (map) {
+          centermarker.addTo(map);
+        }
         inst.trigger = centermarker;
         centermarker.getTooltip().update();
 
@@ -1201,7 +1415,9 @@ $(document).ready(function(){
             // If the shape is already finished, give it all its coordinates
             line = L.polyline(snapshot.path, {color:snapshot.color});
           }
-          line.addTo(map);
+          if (map) {
+            line.addTo(map);
+          }
 
           // Save shape locally
           if (snapshot.type == "area") {
@@ -1274,7 +1490,9 @@ $(document).ready(function(){
 
           // Create the popup that shows data about the marker
           marker.bindTooltip('<h1>'+snapshot.name+'</h1><h2>'+snapshot.desc+'</h2><div class="shape-data"><h3><img src="assets/marker-small-icon.svg">'+snapshot.lat.toFixed(5)+', '+snapshot.lng.toFixed(5)+'</h3></div><div class="arrow-down"></div>', {permanent: false, direction:"top", className:"create-shape-flow tooltip-off", interactive:false, bubblingMouseEvents:false, offset: L.point({x: 0, y: -35})});
-          marker.addTo(map);
+          if (map) {
+            marker.addTo(map);
+          }
           marker.openTooltip();
 
           // Save the marker locally
@@ -1360,6 +1578,13 @@ $(document).ready(function(){
   async function checkData() {
     var user = checkAuth();
     if (checkAuth() != false) {
+      // Wait for map to be initialized
+      if (!map || !mapInitialized) {
+        // Wait a bit and try again
+        setTimeout(checkData, 100);
+        return;
+      }
+      
       // Get room details
       const roomData = await mapusDB.getRoom(room);
       if (roomData) {
@@ -1457,8 +1682,7 @@ $(document).ready(function(){
     }
   });
 
-  // Iniialize the map. Could also be done after signing in (but it's less pretty)
-  initMap();
+  // Map is initialized in the async function above
 
   // Get live location of the current user. Only if Geolocation is activated (local only)
   liveLocation();
