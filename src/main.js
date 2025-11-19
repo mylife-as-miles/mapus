@@ -944,13 +944,13 @@ $(document).ready(function(){
     if (inst.type != "marker") {
       inst.trigger.remove();
       inst.line.remove();
-      db.ref("rooms/"+room+"/objects/"+inst.id).remove();
+      mapusDB.deleteObject(inst.id);
       objects = $.grep(objects, function(e){
            return e.id != inst.id;
       });
     } else {
       inst.marker.remove();
-      db.ref("rooms/"+room+"/objects/"+inst.id).remove();
+      mapusDB.deleteObject(inst.id);
       objects = $.grep(objects, function(e){
            return e.id != inst.id;
       });
@@ -1024,9 +1024,10 @@ $(document).ready(function(){
         $("#map-description").val(olddescription);
       } else {
         // Otherwise, update the description in the database
-        db.ref("rooms/"+room+"/details").update({
+        mapusDB.updateRoom(room, {
           description: name
-        })
+        });
+        mapdescription = name;
       }
     }
   }
@@ -1113,64 +1114,9 @@ $(document).ready(function(){
     a.click();
   }
 
-  // Render user cursors
+  // Render user cursors (disabled - no real-time collaboration with IndexedDB)
   function renderCursors(snapshot, key) {
-    var user = checkAuth();
-    if (checkAuth() != false) {
-      if (key != user.uid) {
-        if (snapshot.active) {
-          if (!cursors.find(x => x.id === key)) {
-            // Custom cursor icon
-            var cursor_icon = L.divIcon({
-              html: '<svg width="18" height="18" style="z-index:9999!important" viewBox="0 0 18 18" fill="none" style="background:none;" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.51169 15.8783L1.08855 3.64956C0.511984 2.05552 2.05554 0.511969 3.64957 1.08853L15.8783 5.51168C17.5843 6.12877 17.6534 8.51606 15.9858 9.23072L11.2573 11.2573L9.23074 15.9858C8.51607 17.6534 6.12878 17.5843 5.51169 15.8783Z" fill="'+snapshot.color+'"/></svg>',
-              iconSize:     [22, 22], // size of the icon
-              iconAnchor:   [0, 0], // point of the icon which will correspond to marker's location
-              shadowAnchor: [4, 62],  // the same for the shadow
-              popupAnchor:  [-3, -76], // point from which the popup should open relative to the iconAnchor
-              className: "cursoricon"
-            });
-
-            // Create a marker for the cursor
-            var cursor_instance = L.marker([snapshot.lat, snapshot.lng], {icon: cursor_icon, pane:"markerPane"});
-
-            // The "tooltip" is just the name of the user that's displayed in the cursor
-            cursor_instance.bindTooltip(snapshot.name, { permanent: true, offset: [14, 32], className: "cursor-label color"+snapshot.color.replace("#", ""), direction:"right"});
-            cursor_instance.addTo(map)
-            cursors.push({id:key, cursor:cursor_instance, color:snapshot.color, name:snapshot.name});
-
-            // Show user avatar on the top right. If they don't have a picture, just put the initial
-            var avatar = snapshot.imgsrc;
-            if (avatar == null) {
-              avatar = snapshot.name.charAt(0).toUpperCase();
-              $("#right-nav").prepend('<div id="profile" style="background:'+snapshot.color+'!important" class="avatars" data-id="'+key+'">'+avatar+'</div>');
-            } else {
-              $("#right-nav").prepend('<div id="profile" style="background:'+snapshot.color+'!important" class="avatars" data-id="'+key+'"><img src="'+avatar+'"></div>');
-            }
-          } else {
-            cursors.find(x => x.id === key).cursor.setLatLng([snapshot.lat, snapshot.lng]);
-            // Observation mode
-            if (observing.status == true && key == observing.id) {
-              map.setZoom(snapshot.zoom);
-              map.panTo(new L.LatLng(snapshot.view[0], snapshot.view[1]));
-            }
-          }
-        } else if (!snapshot.active && cursors.find(x => x.id === key)) {
-          // If the user has disconnected, stop observing them
-          if (observing.status == true && key == observing.id) {
-            stopObserving();
-          }
-
-          // Remove the avatar from the top right
-          $(".avatars[data-id="+key+"]").remove();
-
-          // Remove the cursor
-          cursors.find(x => x.id === key).cursor.remove();
-          cursors = $.grep(cursors, function(e){
-               return e.id != key;
-          });
-        }
-      }
-    }
+    // Feature disabled - IndexedDB is local-only
   }
 
   // Add tooltips for shapes
@@ -1221,7 +1167,7 @@ $(document).ready(function(){
             // If erasing, delete the shape
             inst.trigger.remove();
             inst.line.remove();
-            db.ref("rooms/"+room+"/objects/"+inst.id).remove();
+            mapusDB.deleteObject(inst.id);
             objects = $.grep(objects, function(e){
                  return e.id != inst.id;
             });
@@ -1269,7 +1215,7 @@ $(document).ready(function(){
             if (snapshot.completed && snapshot.type == "draw" && erasing) {
               // If erasing, delete the line
               line.remove();
-              db.ref("rooms/"+room+"/objects/"+key).remove();
+              mapusDB.deleteObject(key);
               objects = $.grep(objects, function(e){
                    return e.id != key;
               });
@@ -1343,7 +1289,7 @@ $(document).ready(function(){
             } else {
               // If erasing, delete the marker
               marker.remove();
-              db.ref("rooms/"+room+"/objects/"+key).remove();
+              mapusDB.deleteObject(key);
               objects = $.grep(objects, function(e){
                    return e.id != key;
               });
@@ -1411,95 +1357,27 @@ $(document).ready(function(){
   }
 
   // Interact with the database
-  function checkData() {
+  async function checkData() {
     var user = checkAuth();
     if (checkAuth() != false) {
-
-      // Get name and description of map on startup
-      db.ref("rooms/"+room+"/details").once('value', (snapshot) => {
-        mapname = snapshot.val().name;
-        mapdescription = snapshot.val().description;
+      // Get room details
+      const roomData = await mapusDB.getRoom(room);
+      if (roomData) {
+        mapname = roomData.name || "New map";
+        mapdescription = roomData.description || "Map description";
         $("#map-name").val(mapname);
         $("#map-description").val(mapdescription);
         $("#share-nav span").html("Share "+mapname);
-      });
+      }
 
-      // Check current users on startup
-      db.ref("rooms/"+room+"/users/").once('value', (snapshot) => {
-        if (snapshot.val() != null) {
-          Object.values(snapshot.val()).forEach(function(cursor, index){
-            renderCursors(cursor, Object.keys(snapshot.val())[index]);
-          })
-        }
-      });
-
-      // Check current objects on startup
-      db.ref("rooms/"+room+"/objects").once('value', (snapshot) => {
-        if (snapshot.val() != null) {
-          Object.values(snapshot.val()).forEach(function(object, index){
-            renderShape(object, Object.keys(snapshot.val())[index]);
-          });
-        }
-      });
-
-      // Update name and description when a change is detected
-      db.ref("rooms/"+room+"/details").on('value', (snapshot) => {
-        mapname = snapshot.val().name;
-        mapdescription = snapshot.val().description;
-        $("#map-name").val(mapname);
-        $("#map-description").val(mapdescription);
-      });
-
-      // Detect when a user joins the room
-      db.ref("rooms/"+room+"/users/").on('child_added', (snapshot) => {
-        renderCursors(snapshot.val(), snapshot.key);
-      });
-
-      // Detect when a user moves their cursor or interacts with the map
-      db.ref("rooms/"+room+"/users/").on('child_changed', (snapshot) => {
-        renderCursors(snapshot.val(), snapshot.key);
-      });
-
-      // Detect when new objects are added or modified
-      db.ref("rooms/"+room+"/objects").on('value', (snapshot) => {
-        if (snapshot.val() != null) {
-          // Check for deleted objects
-          objects.forEach(function(inst){
-            if (inst.completed) {
-              if ($.inArray(inst.id, Object.keys(snapshot.val())) == -1) {
-                if (inst.type == "draw") {
-                  inst.line.remove();
-                } else if (inst.type == "marker") {
-                  inst.marker.remove();
-                  $(".annotation-item[data-id='"+inst.id+"']").remove();
-                } else {
-                  inst.trigger.remove();
-                  if (!inst.local) {
-                    inst.line.remove();
-                  } else {
-                    inst.layer.remove();
-                  }
-                  $(".annotation-item[data-id='"+inst.id+"']").remove();
-                }
-                objects = $.grep(objects, function(e){
-                  return e.id != inst.id;
-                });
-              }
-            }
-          });
-          // Check for new or modified objects
-          Object.values(snapshot.val()).forEach(function(object, index){
-            if (object.user != user.uid || object.session != session) {
-              renderShape(object, Object.keys(snapshot.val())[index]);
-              updateShapeCoords(object,  Object.keys(snapshot.val())[index]);
-            }
-          })
-        }
-      });
-      // Update user status when disconnected
-      db.ref("rooms/"+room+"/users/"+user.uid).onDisconnect().update({
-        active: false
-      })
+      // Load all objects for this room
+      const allObjects = await mapusDB.getAllObjects(room);
+      if (allObjects) {
+        Object.keys(allObjects).forEach(function(key){
+          const object = allObjects[key];
+          renderShape(object, key);
+        });
+      }
     }
   }
 
@@ -1563,7 +1441,6 @@ $(document).ready(function(){
   $(document).on("click", "#more-vertical", toggleMoreMenu);
   $(document).on("click", "#geojson", exportGeoJSON);
   $(document).on("click", "#search-box img", search);
-  $(document).on("click", "#google-signin", signIn);
   $(document).on("click", "#create-map", createMap);
   $(document).on("click", "#logout", logOut);
   $(document).on("click", "#share-button", showSharePopup);

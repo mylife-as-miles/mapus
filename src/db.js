@@ -41,7 +41,11 @@ class MapusDB {
   async createRoom(roomId, details) {
     const tx = this.db.transaction(['rooms'], 'readwrite');
     const store = tx.objectStore('rooms');
-    await store.put({ id: roomId, ...details });
+    await store.put({ 
+      id: roomId, 
+      name: details.name || "New map",
+      description: details.description || "Map description"
+    });
     return roomId;
   }
 
@@ -50,17 +54,43 @@ class MapusDB {
     const store = tx.objectStore('rooms');
     return new Promise((resolve, reject) => {
       const request = store.get(roomId);
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const room = request.result;
+        if (room) {
+          // Return in format expected by code (with details object)
+          resolve({
+            name: room.name,
+            description: room.description
+          });
+        } else {
+          resolve(null);
+        }
+      };
       request.onerror = () => reject(request.error);
     });
   }
 
   async updateRoom(roomId, updates) {
-    const room = await this.getRoom(roomId);
+    const tx = this.db.transaction(['rooms'], 'readwrite');
+    const store = tx.objectStore('rooms');
+    const room = await new Promise((resolve, reject) => {
+      const request = store.get(roomId);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
     if (room) {
-      const tx = this.db.transaction(['rooms'], 'readwrite');
-      const store = tx.objectStore('rooms');
-      await store.put({ ...room, ...updates });
+      const updatedRoom = { 
+        id: roomId,
+        name: room.name,
+        description: room.description
+      };
+      if (updates.name !== undefined) {
+        updatedRoom.name = updates.name;
+      }
+      if (updates.description !== undefined) {
+        updatedRoom.description = updates.description;
+      }
+      await store.put(updatedRoom);
     }
   }
 
