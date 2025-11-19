@@ -7,7 +7,7 @@ Mapus is a tool to explore and annotate collaboratively on a map. You can draw, 
 
 <a href="https://www.producthunt.com/posts/mapus?utm_source=badge-top-post-badge&utm_medium=badge&utm_souce=badge-mapus" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/top-post-badge.svg?post_id=307018&theme=light&period=weekly" alt="Mapus - An open source map tool with real-time collaboration | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
-> You can support this project (and many others) through [GitHub Sponsors](https://github.com/sponsors/alyssaxuu)! ❤️
+> Original project by Alyssa X. Forked and customized with IndexedDB authentication.
 
 Made by [Alyssa X](https://alyssax.com)
 
@@ -43,7 +43,7 @@ Since real-time multiplayer can get expensive (even though Firebase has a pretty
 2. Create a Firebase account and project. You can check out the [docs](https://firebase.google.com/docs/web/setup?authuser=0) to see how to get started.
 3. Create a Realtime Database. You may need to set up specific rules to keep the data safe, [here's](https://firebase.google.com/docs/database/security?authuser=0) an overview. The default rules though will work fine for testing and development, just not for production.
 4. Enable Google Sign In in the Firebase console. [Here's how](https://firebase.google.com/docs/auth/web/google-signin?authuser=0).
-5. Replace the Firebase config object in the [index.html](https://github.com/alyssaxuu/mapus/blob/8d8d914f97fac60d9e60e1978b8b064c0d888ef6/src/index.html#L152) file with your own. The [docs](https://firebase.google.com/docs/web/setup?authuser=0#config-object) explain how to get the object.
+5. Replace the Firebase config object in the index.html file with your own. The [docs](https://firebase.google.com/docs/web/setup?authuser=0#config-object) explain how to get the object. (Note: This version uses IndexedDB instead of Firebase)
 6. In order for the authentication to work, you need to run Mapus in a server. [Here's](https://stackoverflow.com/questions/38497334/how-to-run-html-file-on-localhost) a few ways to do it in localhost. Then go to the Firebase console, click on "Authenthication" in the sidebar, then on the "Sign-in method" tab and add your domain (or localhost) in the authorized domains list.
 7. At this point you could just use the tool as is, but if you want to make sure you don't go over the Firebase free plan limits, you could set up the [Firebase Emulator](https://firebase.google.com/docs/emulator-suite/install_and_configure?authuser=0) and run everything locally 100% for free.
 
@@ -81,4 +81,6 @@ Throughout the development of Mapus I've had several ideas in regards to additio
 - [MapBox](https://www.mapbox.com/) - for the tile seen in the GIF. The current version uses an OSM tile because it's free
 
 #
- Feel free to reach out to me through email at hi@alyssax.com or [on Twitter](https://twitter.com/alyssaxuu) if you have any questions or feedback! Hope you find this useful 💜
+ Original project: [https://github.com/alyssaxuu/mapus](https://github.com/alyssaxuu/mapus)
+
+This fork uses IndexedDB for local storage and includes a modern authentication system.
