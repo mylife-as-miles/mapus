@@ -17,10 +17,10 @@
     <input value="https://coollink.com/haha" id="share-url" readonly="readonly">
     <div id="share-copy">Copy link</div>
   </div>
-  <div id="popup">
+  <div id="popup" style="display:none;">
     <div class="header-text">Welcome to Mapus!</div>
-    <div class="subheader-text">To get started, click below to sign in with Google.</div>
-    <div id="google-signin"><img src="assets/google-logo.svg"> Sign in with Google</div>
+    <div class="subheader-text">To get started, click below to create a map.</div>
+    <div id="create-map">Create a map</div>
   </div>
   <div id="overlay"></div>
   <div id="more-menu">
@@ -141,27 +141,7 @@
     <div id="observing-name"></div>
   </div>
   <div id="mapDiv"></div>
-  <script src="https://www.gstatic.com/firebasejs/8.2.9/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.2.9/firebase-analytics.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.2.8/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.2.8/firebase-storage.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.2.9/firebase-firestore.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.2.9/firebase-database.js"></script>
-  <script>
-    // Your web app's Firebase configuration
-    var firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "DOMAIN.firebaseapp.com",
-      projectId: "PROJECT_ID",
-      databaseURL: "DB_URL.firebaseio.com",
-      storageBucket: "DOMAIN.appspot.com",
-      messagingSenderId: "ID",
-      appId: "APP_ID"
-    };
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    firebase.analytics();
-  </script>
+  <script src="db.js"></script>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
   <script src="leaflet.min.js"></script>

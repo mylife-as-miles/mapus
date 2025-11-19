@@ -8,7 +8,6 @@ $(document).ready(function(){
     renderer: L.canvas({ tolerance: 10 })
   }).setView([lat, lon], 13);
   L.PM.setOptIn(true);
-  var db = firebase.database();
   var mapname = "";
   var oldname = "";
   var mapdescription = "";
@@ -24,20 +23,16 @@ $(document).ready(function(){
   var markerson = false;
   var lineon = false;
   var linelastcoord = [0,0];
-  var observing = {status:false, id:0};
   var linedistance = 0;
   var mousedown = false;
   var objects = [];
   var currentid = 0;
   var color = "#634FF1";
-  var cursors = [];
   var userlocation = "";
   var places = [];
   var place_ids = [];
   var room = "";
-
-  // Available cursor colors
-  var colors = ["#EC1D43", "#EC811D", "#ECBE1D", "#B6EC1D", "#1DA2EC", "#781DEC", "#CF1DEC", "#222222"];
+  var currentUser = null;
 
   // Get URL params
   var params = new URLSearchParams(window.location.search);
@@ -48,23 +43,23 @@ $(document).ready(function(){
     $("#share-url").val(window.location.href);
   }
 
-  // Oddly enough Firebase auth doesn't initialize right on startup. It needs a slight delay?
-  window.setTimeout(function(){
-    if (checkAuth() && params.has('file')) {
-      checkData();
+  // Initialize IndexedDB and load data
+  (async function() {
+    await mapusDB.init();
+    
+    // Create or get local user
+    currentUser = await getOrCreateUser();
+    
+    if (params.has('file')) {
+      await checkData();
     } else {
-      if (checkAuth() && !params.has('file')) {
-        // Prompt the user to create a map
-        $("#popup").find(".header-text").html("Create a map");
-        $("#popup").find(".subheader-text").html("Maps can be shared with friends to collaborate in real-time.");
-        $("#google-signin").attr("id", "create-map");
-        $("#create-map").html("Create a map");
-      }
-      // Show popup & overlay
+      // Prompt the user to create a map
+      $("#popup").find(".header-text").html("Create a map");
+      $("#popup").find(".subheader-text").html("Create your first map to get started.");
       $("#overlay").addClass("signin");
-      $("#popup").addClass("signin");
+      $("#popup").addClass("signin").show();
     }
-  }, 500)
+  })();
 
   function initMap() {
     // Makimum bounds for zooming and panning
@@ -310,15 +305,15 @@ $(document).ready(function(){
     }
   }
 
-  // Save nearby location (share with other users, they all will see it)
-  function saveNearby() {
+  // Save nearby location
+  async function saveNearby() {
     var user = checkAuth();
     if (checkAuth() != false) {
       var inst = places.find(x => x.place_id == $(this).attr("data-id"));
-      currentid = db.ref("rooms/"+room+"/objects").push().key;
+      currentid = mapusDB.generateId();
       var key = currentid;
       inst.id = currentid;
-      db.ref("rooms/"+room+"/objects/"+currentid).set({
+      await mapusDB.addObject(room, currentid, {
         color: inst.color,
         place_id: inst.place_id,
         lat: inst.lat,
@@ -349,39 +344,18 @@ $(document).ready(function(){
     });
   }
 
-  // Enable observation mode
+  // Enable observation mode (disabled - no real-time collaboration)
   function observationMode() {
-    var user = checkAuth();
-    if (checkAuth() != false) {
-      var otheruser = $(this).attr("data-id");
-      if (otheruser != user.uid) {
-        if (observing.id == otheruser) {
-          // When clicking on the avatar of the current user you're observing, stop observing them
-          stopObserving();
-        } else {
-          // Start observing the selected user
-          observing.status = true;
-          observing.id = otheruser;
-
-          // Show that observation mode is enabled
-          $("#outline").css({"border": "6px solid "+cursors.find(x => x.id === otheruser).color});
-          $("#observing-name").html("Observing "+cursors.find(x => x.id === otheruser).name);
-          $("#observing-name").css({"background": cursors.find(x => x.id === otheruser).color});
-          $("#outline").addClass("observing");
-        }
-      }
-    }
+    // Feature disabled - IndexedDB is local-only
   }
 
   // Disable observation mode
   function stopObserving() {
-    observing.status = false;
-    $("#outline").css({"border": "none"});
-    $("#outline").removeClass("observing");
+    // Feature disabled - IndexedDB is local-only
   }
 
   // Save marker/line/area data
-  function saveForm(e) {
+  async function saveForm(e) {
     var user = checkAuth();
     if (checkAuth() != false) {
       enteringdata = false;
@@ -399,30 +373,30 @@ $(document).ready(function(){
       if (inst.type == "area") {
         // Create a popup showing info about the area
         inst.trigger.bindTooltip('<h1>'+inst.name+'</h1><h2>'+inst.desc+'</h2><div class="shape-data"><h3><img src="assets/area-icon.svg">'+inst.area+' km&sup2;</h3></div><div class="shape-data"><h3><img src="assets/perimeter-icon.svg">'+inst.distance+' km</h3></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: -15, y: 18})});
-        db.ref("rooms/"+room+"/objects/"+currentid).update({
+        await mapusDB.updateObject(currentid, {
           area:inst.area,
           distance: inst.distance,
           name: inst.name,
           desc: inst.desc,
           completed: true
-        })
+        });
       } else if (inst.type == "line") {
         // Create a popup showing info about the line
         inst.trigger.bindTooltip('<h1>'+inst.name+'</h1><h2>'+inst.desc+'</h2><div class="shape-data"><h3><img src="assets/distance-icon.svg">'+inst.distance+' km</h3></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: -15, y: 18})});
-        db.ref("rooms/"+room+"/objects/"+currentid).update({
+        await mapusDB.updateObject(currentid, {
           distance: inst.distance,
           name: inst.name,
           desc: inst.desc,
           completed: true
-        })
+        });
       } else if (inst.type == "marker") {
         // Create a popup showing info about the marker
         inst.trigger.bindTooltip('<h1>'+inst.name+'</h1><h2>'+inst.desc+'</h2><div class="shape-data"><h3><img src="assets/marker-small-icon.svg">'+inst.lat.toFixed(5)+', '+inst.lng.toFixed(5)+'</h3></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: 0, y: -35})});
-        db.ref("rooms/"+room+"/objects/"+currentid).update({
+        await mapusDB.updateObject(currentid, {
           name: inst.name,
           desc: inst.desc,
           completed: true
-        })
+        });
       }
 
       // Render the shape in the sidebar list and focus it
@@ -437,7 +411,7 @@ $(document).ready(function(){
   }
 
   // Don't save marker/line/area data (doesn't delete them, just reverts to defaults)
-  function cancelForm() {
+  async function cancelForm() {
     var user = checkAuth();
     if (checkAuth() != false) {
       enteringdata = false;
@@ -451,30 +425,30 @@ $(document).ready(function(){
       if (inst.type == "area") {
         // Create a popup showing info about the area
         inst.trigger.bindTooltip('<h1>'+inst.name+'</h1><h2>'+inst.desc+'</h2><div class="shape-data"><h3><img src="assets/area-icon.svg">'+inst.area+' km&sup2;</h3></div><div class="shape-data"><h3><img src="assets/perimeter-icon.svg">'+inst.distance+' km</h3></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: -15, y: 18})});
-        db.ref("rooms/"+room+"/objects/"+currentid).update({
+        await mapusDB.updateObject(currentid, {
           area:inst.area,
           distance: inst.distance,
           name: inst.name,
           desc: inst.desc,
           completed: true
-        })
+        });
       } else if (inst.type == "line") {
         // Create a popup showing info about the line
         inst.trigger.bindTooltip('<h1>'+inst.name+'</h1><h2>'+inst.desc+'</h2><div class="shape-data"><h3><img src="assets/distance-icon.svg">'+inst.distance+' km</h3></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: -15, y: 18})});
-        db.ref("rooms/"+room+"/objects/"+currentid).update({
+        await mapusDB.updateObject(currentid, {
           distance: inst.distance,
           name: inst.name,
           desc: inst.desc,
           completed: true
-        })
+        });
       } else if (inst.type == "marker") {
         // Create a popup showing info about the marker
         inst.trigger.bindTooltip('<h1>'+inst.name+'</h1><h2>'+inst.desc+'</h2><div class="shape-data"><h3><img src="assets/marker-small-icon.svg">'+inst.lat.toFixed(5)+', '+inst.lng.toFixed(5)+'</h3></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: 0, y: -35})});
-        db.ref("rooms/"+room+"/objects/"+currentid).update({
+        await mapusDB.updateObject(currentid, {
           name: inst.name,
           desc: inst.desc,
           completed: true
-        })
+        });
       }
 
       // Render shape in the sidebar list and focus it
@@ -504,30 +478,28 @@ $(document).ready(function(){
           linelastcoord = e.layer._latlngs[e.layer._latlngs.length-1];
           if (e.layer._latlngs.length == 1) {
             // If this is the first vertex, get a key and add the new shape in the database
-            currentid = db.ref("rooms/"+room+"/objects").push().key;
-            db.ref("rooms/"+room+"/objects/"+currentid).set({
-              color: color,
-              initlat: e.layer._latlngs[0].lat,
-              initlng: e.layer._latlngs[0].lng,
-              user: user.uid,
-              type: "area",
-              session: session,
-              name: "Area",
-              desc: "",
-              distance: 0,
-              area: 0,
-              completed: false,
-              path: ""
-            });
-            db.ref("rooms/"+room+"/objects/"+currentid+"/coords/").push({
-              set:[linelastcoord.lat,linelastcoord.lng]
-            });
+            currentid = mapusDB.generateId();
+            (async () => {
+              await mapusDB.addObject(room, currentid, {
+                color: color,
+                initlat: e.layer._latlngs[0].lat,
+                initlng: e.layer._latlngs[0].lng,
+                user: user.uid,
+                type: "area",
+                session: session,
+                name: "Area",
+                desc: "",
+                distance: 0,
+                area: 0,
+                completed: false,
+                path: ""
+              });
+              await mapusDB.addObjectCoord(currentid, [linelastcoord.lat, linelastcoord.lng]);
+            })();
             objects.push({id:currentid, local:true, color:color, user:user.uid, name:"Area", desc:"", trigger:"", distance:0, area:0, layer:"", type:"area", session:session, completed:false});
           } else {
             // If this is not the first vertex, update the data in the database with the latest coordinates
-            db.ref("rooms/"+room+"/objects/"+currentid+"/coords/").push({
-              set:[linelastcoord.lat,linelastcoord.lng]
-            })
+            mapusDB.addObjectCoord(currentid, [linelastcoord.lat, linelastcoord.lng]);
           }
         } else if (e.shape == "Line") {
           lineon = true;
@@ -535,23 +507,23 @@ $(document).ready(function(){
           linelastcoord = e.layer._latlngs[e.layer._latlngs.length-1];
           if (e.layer._latlngs.length == 1) {
             // If this is the first vertex, get a key and add the new shape in the database
-            currentid = db.ref("rooms/"+room+"/objects").push().key;
-            db.ref("rooms/"+room+"/objects/"+currentid).set({
-              color: color,
-              initlat: e.layer._latlngs[0].lat,
-              initlng: e.layer._latlngs[0].lng,
-              user: user.uid,
-              type: "line",
-              session: session,
-              name: "Line",
-              desc: "",
-              distance: 0,
-              completed: false,
-              path: ""
-            });
-            db.ref("rooms/"+room+"/objects/"+currentid+"/coords/").push({
-              set:[linelastcoord.lat,linelastcoord.lng]
-            });
+            currentid = mapusDB.generateId();
+            (async () => {
+              await mapusDB.addObject(room, currentid, {
+                color: color,
+                initlat: e.layer._latlngs[0].lat,
+                initlng: e.layer._latlngs[0].lng,
+                user: user.uid,
+                type: "line",
+                session: session,
+                name: "Line",
+                desc: "",
+                distance: 0,
+                completed: false,
+                path: ""
+              });
+              await mapusDB.addObjectCoord(currentid, [linelastcoord.lat, linelastcoord.lng]);
+            })();
             objects.push({id:currentid, local:true, color:color, user:user.uid, name:"Line", desc:"", trigger:"", distance:0, layer:"", type:"line", session:session, completed:false});
           } else {
             // If this is not the first vertex, update hints to show total distance drawn
@@ -563,9 +535,7 @@ $(document).ready(function(){
             followcursor.setTooltipContent((linedistance/1000)+"km | Double click to finish");
 
             // Save new vertext in the database
-            db.ref("rooms/"+room+"/objects/"+currentid+"/coords/").push({
-              set:[linelastcoord.lat,linelastcoord.lng]
-            })
+            mapusDB.addObjectCoord(currentid, [linelastcoord.lat, linelastcoord.lng]);
           }
         }
       });
@@ -600,10 +570,10 @@ $(document).ready(function(){
         })
 
         // Update the data in the database
-        db.ref("rooms/"+room+"/objects/"+currentid).update({
+        mapusDB.updateObject(currentid, {
           path:temppath,
           area:inst.area
-        })
+        });
       } else if (inst.type == "line") {
         // Save all the line coordinates
         var temppath = [];
@@ -612,9 +582,9 @@ $(document).ready(function(){
         })
 
         // Update the data in the database
-        db.ref("rooms/"+room+"/objects/"+currentid).update({
+        mapusDB.updateObject(currentid, {
           path:temppath
-        })
+        });
       }
 
       // Create a marker so it can trigger a popup when clicking on a line, or area
@@ -644,7 +614,7 @@ $(document).ready(function(){
           // If erasing, delete the shape
           inst.trigger.remove();
           e.layer.remove();
-          db.ref("rooms/"+room+"/objects/"+inst.id).remove();
+          mapusDB.deleteObject(inst.id);
           objects = $.grep(objects, function(e){
                return e.id != inst.id;
           });
@@ -666,12 +636,12 @@ $(document).ready(function(){
   });
 
   // Start free drawing
-  function startDrawing(lat,lng,user) {
+  async function startDrawing(lat,lng,user) {
     var line = L.polyline([[lat,lng]], {color: color});
 
     // Create a new key for the line object, and set initial data in the database
-    currentid = db.ref("rooms/"+room+"/objects").push().key;
-    db.ref("rooms/"+room+"/objects/"+currentid).set({
+    currentid = mapusDB.generateId();
+    await mapusDB.addObject(room, currentid, {
       color: color,
       initlat: lat,
       initlng: lng,
@@ -680,9 +650,7 @@ $(document).ready(function(){
       session: session,
       completed: true
     });
-    db.ref("rooms/"+room+"/objects/"+currentid+"/coords/").push({
-      set:[lat,lng]
-    })
+    await mapusDB.addObjectCoord(currentid, [lat, lng]);
 
     // Save an object with all the defaults
     objects.push({id:currentid, user:user.uid, line:line, session:session, local:true, completed:true, type:"draw"});
@@ -693,7 +661,7 @@ $(document).ready(function(){
       inst.line.on("click", function(event){
         if (erasing) {
           inst.line.remove();
-          db.ref("rooms/"+room+"/objects/"+inst.id).remove();
+          mapusDB.deleteObject(inst.id);
           objects = $.grep(objects, function(e){
                return e.id != inst.id;
           });
@@ -733,19 +701,21 @@ $(document).ready(function(){
       marker.openTooltip();
 
       // Create a new key for the marker, and add it to the database
-      currentid = db.ref("rooms/"+room+"/objects").push().key;
+      currentid = mapusDB.generateId();
       var key = currentid;
-      db.ref("rooms/"+room+"/objects/"+currentid).set({
-        color: color,
-        lat: lat,
-        lng: lng,
-        user: user.uid,
-        type: "marker",
-        m_type: "none",
-        session: session,
-        name: "Marker",
-        desc: ""
-      });
+      (async () => {
+        await mapusDB.addObject(room, currentid, {
+          color: color,
+          lat: lat,
+          lng: lng,
+          user: user.uid,
+          type: "marker",
+          m_type: "none",
+          session: session,
+          name: "Marker",
+          desc: ""
+        });
+      })();
       objects.push({id:currentid, user:user.uid, color:color, name:"Marker", m_type:"none",  desc:"", lat:lat, lng:lng, marker:marker, trigger:marker, session:session, completed:true, type:"marker"});
 
       // Detect when the tooltip is closed
@@ -767,7 +737,7 @@ $(document).ready(function(){
         } else {
           // If erasing, delete the marker
           marker.remove();
-          db.ref("rooms/"+room+"/objects/"+inst.id).remove();
+          mapusDB.deleteObject(key);
           objects = $.grep(objects, function(e){
                return e.id != key;
           });
@@ -826,42 +796,17 @@ $(document).ready(function(){
         })[0].line.addLatLng([lat,lng]);
 
         // Update drawn path in the database
-        db.ref("rooms/"+room+"/objects/"+currentid+"/coords/").push({
-          set:[lat,lng]
-        })
+        mapusDB.addObjectCoord(currentid, [lat, lng]);
       }
 
       // If drawing a line, show the distance of drawn line in the tooltip
       if (lineon) {
         followcursor.setTooltipContent(((linedistance+linelastcoord.distanceTo([lat,lng]))/1000).toFixed(2)+"km | Double click to finish");
       }
-      if (typeof lat != undefined && typeof lng != undefined) {
-        if (!dragging) {
-          // Save mouse coordinates in the database for real-time cursors, plus current view for observation mode
-          db.ref('rooms/'+room+'/users/'+user.uid).update({
-              lat:lat,
-              lng:lng,
-              view: [map.getBounds().getCenter().lat, map.getBounds().getCenter().lng]
-          });
-        } else {
-          // Save current view for observation mode
-          db.ref('rooms/'+room+'/users/'+user.uid).update({
-              view: [map.getBounds().getCenter().lat, map.getBounds().getCenter().lng]
-          });
-        }
-      }
     }
   });
   map.addEventListener('zoom', (event) => {
-    var user = checkAuth();
-    if (checkAuth() != false) {
-      // Save current view and zoom for observation mode
-      db.ref('rooms/'+room+'/users/'+user.uid).update({
-          view: [map.getBounds().getCenter().lat, map.getBounds().getCenter().lng],
-          zoom: map.getZoom()
-      });
-      stopObserving();
-    }
+    // Zoom event - no database update needed for local mode
   });
   map.addEventListener('movestart', (event) => {
     dragging = true;
@@ -870,86 +815,43 @@ $(document).ready(function(){
     dragging = false;
   });
 
-  // Server code
+  // Get or create local user
+  async function getOrCreateUser() {
+    let user = await mapusDB.getUser('local_user');
+    if (!user) {
+      user = {
+        id: 'local_user',
+        uid: 'local_user',
+        name: 'User',
+        session: Date.now()
+      };
+      await mapusDB.saveUser('local_user', user);
+    }
+    session = user.session;
+    return user;
+  }
+
+  // Check auth (always returns user for local mode)
   function checkAuth() {
-      var user = firebase.auth().currentUser;
-      if (user == null) {
-          return false;
-      } else {
-          return user;
-      }
+    return currentUser;
   }
 
-  // Sign in
-  function signIn() {
-    var provider = new firebase.auth.GoogleAuthProvider();
-
-    // Make sure the session persists after closing the window so the user doesn't have to log in every time
-    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-    .then(() => {
-      // Sign in using Google
-      firebase.auth().signInWithPopup(provider).then((result) => {
-        // Check if user is inside a file
-        if (params.has('file')) {
-          $(".signin").removeClass("signin")
-          var user = result.user;
-          var usercolor = colors[Math.floor(Math.random()*colors.length)];
-
-          // Get user data
-          user.providerData.forEach(profile => {
-            // Set or update user data
-            db.ref('rooms/'+room+'/users/'+user.uid).update({
-                lat:0,
-                lng:0,
-                active: true,
-                color: usercolor,
-                session: firebase.database.ServerValue.increment(1),
-                name: user.displayName,
-                imgsrc: profile.photoURL,
-                view: [map.getBounds().getCenter().lat, map.getBounds().getCenter().lng],
-                zoom: map.getZoom()
-            });
-          });
-
-          // Sometimes the session doesn't set properly, might need some time for the last call to go through?
-          window.setTimeout(function(){
-            db.ref('rooms/'+room+'/users/'+user.uid).once('value').then((snapshot) => {
-              session = snapshot.val().session;
-            });
-          }, 100);
-
-          // Get data from database
-          checkData();
-        } else {
-          // Prompt the user with a popup to create a map
-          $("#popup").find(".header-text").html("Create a map");
-          $("#popup").find(".subheader-text").html("Maps can be shared with friends to collaborate in real-time.");
-          $("#google-signin").attr("id", "create-map");
-          $("#create-map").html("Create a map");
-        }
-      });
-    });
-  }
-
-  // Log out
+  // Log out (just reloads the page)
   function logOut() {
-    firebase.auth().signOut().then(function() {
-      $("#popup").addClass("signin");
-      $("#overlay").addClass("signin");
-    });
+    if (confirm("Clear all local data and start fresh?")) {
+      indexedDB.deleteDatabase('MapusDB');
+      window.location.reload();
+    }
   }
 
   // Create a map
-  function createMap() {
-    var user = checkAuth();
-    if (checkAuth() != false) {
-      var key = db.ref('rooms').push().key;
-      db.ref("rooms/"+key+"/details").set({
-        name: "New map",
-        description: "Map description"
-      });
-      window.location.replace(window.location.href+"?file="+key);
-    }
+  async function createMap() {
+    var key = mapusDB.generateId();
+    await mapusDB.createRoom(key, {
+      name: "New map",
+      description: "Map description"
+    });
+    window.location.replace(window.location.href.split('?')[0] + "?file=" + key);
   }
 
   // Collapse/expand objects in the sidebar
@@ -1086,9 +988,10 @@ $(document).ready(function(){
         $("#map-name").val(oldname);
       } else {
         // Otherwise, update the name in the database
-        db.ref("rooms/"+room+"/details").update({
+        mapusDB.updateRoom(room, {
           name: name
-        })
+        });
+        mapname = name;
       }
     }
   }
