@@ -6,7 +6,7 @@ $(document).ready(function(){
   // Initialize the Leaflet map
   var map = L.map('mapDiv', {
     renderer: L.canvas({ tolerance: 10 })
-  }).setView([lat, lon], 15);
+  }).setView([lat, lon], 17);
   L.PM.setOptIn(true);
   var mapname = "";
   var oldname = "";
