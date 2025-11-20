@@ -280,10 +280,22 @@ $(document).ready(function(){
     if (checkAuth() != false) {
       var locationtype = $(this).attr("data-type");
       var markercolor = $(this).attr("data-color");
-      var coordinates = map.getBounds().getNorthWest().lng+','+map.getBounds().getNorthWest().lat+','+map.getBounds().getSouthEast().lng+','+map.getBounds().getSouthEast().lat;
+      var bounds = map.getBounds();
+      // Nominatim viewbox format: left,bottom,right,top (minlon,minlat,maxlon,maxlat)
+      var minlon = Math.min(bounds.getNorthWest().lng, bounds.getSouthEast().lng);
+      var minlat = Math.min(bounds.getNorthWest().lat, bounds.getSouthEast().lat);
+      var maxlon = Math.max(bounds.getNorthWest().lng, bounds.getSouthEast().lng);
+      var maxlat = Math.max(bounds.getNorthWest().lat, bounds.getSouthEast().lat);
+      var coordinates = minlon+','+minlat+','+maxlon+','+maxlat;
 
       // Call Nominatim API to get places nearby the current view, of the amenity that the user has selected
-      $.get('https://nominatim.openstreetmap.org/search?viewbox='+coordinates+'&format=geocodejson&limit=20&bounded=1&amenity='+locationtype+'&exclude_place_ids='+JSON.stringify(place_ids), function(data) {
+      var excludeIds = place_ids.length > 0 ? place_ids.join(',') : '';
+      var url = 'https://nominatim.openstreetmap.org/search?viewbox='+coordinates+'&format=geocodejson&limit=20&bounded=1&amenity='+locationtype;
+      if (excludeIds) {
+        url += '&exclude_place_ids=' + excludeIds;
+      }
+      
+      $.get(url, function(data) {
         // Custom marker icon depending on the amenity
         var marker_icon = L.icon({
           iconUrl: 'assets/'+locationtype+'-marker.svg',
@@ -292,15 +304,19 @@ $(document).ready(function(){
           shadowAnchor: [4, 62],
           popupAnchor:  [-3, -76]
         });
-        data.features.forEach(function(place){
-          // Create a marker for the place
-          var marker = L.marker([place.geometry.coordinates[1], place.geometry.coordinates[0]], {icon:marker_icon, pane:"overlayPane", interactive:true}).addTo(map);
+        if (data.features && data.features.length > 0) {
+          data.features.forEach(function(place){
+            // Create a marker for the place
+            var marker = L.marker([place.geometry.coordinates[1], place.geometry.coordinates[0]], {icon:marker_icon, pane:"overlayPane", interactive:true}).addTo(map);
 
-          // Create a popup with information about the place, and the options to save it or delete it (it's only local for now)
-          marker.bindTooltip('<h1>'+place.properties.geocoding.name+'</h1><div class="shape-data"><h3><img src="assets/marker-small-icon.svg">'+place.geometry.coordinates[1].toFixed(5)+', '+place.geometry.coordinates[0].toFixed(5)+'</h3></div><br><div id="buttons2"><button class="cancel-button-place" data-id='+place.properties.geocoding.place_id+'>Remove</button><button class="save-button-place" data-id='+place.properties.geocoding.place_id+'>Save</button></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: 0, y: -35})});
-          places.push({id: "", place_id:place.properties.geocoding.place_id, user:user.uid, name:place.properties.geocoding.name, desc:"", lat:place.geometry.coordinates[1], lng:place.geometry.coordinates[0], trigger:marker, completed:true, marker:marker, m_type:locationtype, type:"marker", session:session, color:markercolor});
-          place_ids.push(place.properties.geocoding.place_id);
-        });
+            // Create a popup with information about the place, and the options to save it or delete it (it's only local for now)
+            marker.bindTooltip('<h1>'+place.properties.geocoding.name+'</h1><div class="shape-data"><h3><img src="assets/marker-small-icon.svg">'+place.geometry.coordinates[1].toFixed(5)+', '+place.geometry.coordinates[0].toFixed(5)+'</h3></div><br><div id="buttons2"><button class="cancel-button-place" data-id='+place.properties.geocoding.place_id+'>Remove</button><button class="save-button-place" data-id='+place.properties.geocoding.place_id+'>Save</button></div><div class="arrow-down"></div>', {permanent: false, direction:"top", interactive:false, bubblingMouseEvents:false, className:"create-shape-flow", offset: L.point({x: 0, y: -35})});
+            places.push({id: "", place_id:place.properties.geocoding.place_id, user:user.uid, name:place.properties.geocoding.name, desc:"", lat:place.geometry.coordinates[1], lng:place.geometry.coordinates[0], trigger:marker, completed:true, marker:marker, m_type:locationtype, type:"marker", session:session, color:markercolor});
+            place_ids.push(place.properties.geocoding.place_id);
+          });
+        }
+      }).fail(function(xhr, status, error) {
+        console.error('Error fetching nearby places:', error);
       });
     }
   }
