@@ -118,8 +118,20 @@ $(document).ready(function(){
         });
       } else {
         // If the location is unknown, set it and fly there
-        liveLocation();
-        targetLiveLocation();
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(function(position){
+            var icon = L.icon({
+              iconUrl: 'assets/liveLocation.svg',
+              iconSize:     [24, 24],
+              iconAnchor:   [12, 12],
+            });
+            // Create a marker to show the user location
+            userlocation = L.marker([position.coords.latitude, position.coords.longitude], {icon:icon, pane: "overlayPane"});
+            userlocation.addTo(map);
+            // Flies to the location (more fancy)
+            map.flyTo(userlocation.getLatLng(), 18);
+          });
+        }
       }
     }
   }
@@ -280,6 +292,13 @@ $(document).ready(function(){
     if (checkAuth() != false) {
       var locationtype = $(this).attr("data-type");
       var markercolor = $(this).attr("data-color");
+      
+      // Ensure map is initialized
+      if (!map || !map.getBounds) {
+        console.error('Map not initialized');
+        return;
+      }
+      
       var bounds = map.getBounds();
       // Nominatim viewbox format: left,bottom,right,top (minlon,minlat,maxlon,maxlat)
       var minlon = Math.min(bounds.getNorthWest().lng, bounds.getSouthEast().lng);
